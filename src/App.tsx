@@ -6,6 +6,7 @@ import {
   createPersonalContext,
   addFact,
   confirmFact,
+  updateFact,
 } from "./intelligence/personal-profile/personalContext";
 
 import type { PersonalContext } from "./intelligence/personal-profile/types";
@@ -73,6 +74,9 @@ function createDemoProfile(): PersonalContext {
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("Home");
+  const [goalDraft, setGoalDraft] = useState("");
+const [activityDraft, setActivityDraft] = useState("");
+const [profileSaveMessage, setProfileSaveMessage] = useState("");
 
   const [personalContext, setPersonalContext] =
   useState<PersonalContext>(() => {
@@ -123,6 +127,10 @@ function App() {
     "preferred_activity",
     "Not specified"
   );
+  useEffect(() => {
+  setGoalDraft(primaryGoal);
+  setActivityDraft(preferredActivity);
+}, [primaryGoal, preferredActivity]);
 
   const activityMinutes = getProfileValue("activity_minutes", "—");
 
@@ -139,6 +147,63 @@ function App() {
       confirmFact(current, morningPattern.id)
     );
   }
+  function saveProfileChanges() {
+  const trimmedGoal = goalDraft.trim();
+  const trimmedActivity = activityDraft.trim();
+
+  if (!trimmedGoal || !trimmedActivity) {
+    setProfileSaveMessage("Please fill in both fields.");
+    return;
+  }
+
+  setPersonalContext((currentContext) => {
+    let updatedContext = currentContext;
+
+    const existingGoal = updatedContext.facts.find(
+      (fact) => fact.key === "primary_goal"
+    );
+
+    if (existingGoal) {
+      updatedContext = updateFact(updatedContext, existingGoal.id, {
+        value: trimmedGoal,
+        status: "confirmed",
+      });
+    } else {
+      updatedContext = addFact(updatedContext, {
+        category: "goals",
+        key: "primary_goal",
+        value: trimmedGoal,
+        status: "confirmed",
+        source: "user_input",
+        permissionRequired: false,
+      });
+    }
+
+    const existingActivity = updatedContext.facts.find(
+      (fact) => fact.key === "preferred_activity"
+    );
+
+    if (existingActivity) {
+      updatedContext = updateFact(updatedContext, existingActivity.id, {
+        value: trimmedActivity,
+        status: "confirmed",
+      });
+    } else {
+      updatedContext = addFact(updatedContext, {
+        category: "preferences",
+        key: "preferred_activity",
+        value: trimmedActivity,
+        status: "confirmed",
+        source: "user_input",
+        permissionRequired: false,
+      });
+    }
+
+    return updatedContext;
+  });
+
+  setProfileSaveMessage("Your profile has been updated.");
+}
 
   return (
     <main className="app-shell">
@@ -390,32 +455,51 @@ function App() {
         )}
 
         {activeTab === "My Goals" && (
-          <section className="placeholder-section">
-            <p className="eyebrow">YOUR PERSONAL CONTEXT</p>
-            <h1>My Goals</h1>
+  <section className="placeholder-section">
+    <p className="eyebrow">YOUR PERSONAL CONTEXT</p>
+    <h1>My Goals</h1>
 
-            <p>
-              Your current primary goal is:
-            </p>
+    <p>Update your personal goal and preferred activity.</p>
 
-            <h2>{primaryGoal}</h2>
+    <div className="profile-edit-form">
+      <label htmlFor="goal-input">Primary goal</label>
+      <input
+        id="goal-input"
+        type="text"
+        value={goalDraft}
+        onChange={(event) => setGoalDraft(event.target.value)}
+        placeholder="What is your health goal?"
+      />
 
-            <p>
-              Preferred activity: {preferredActivity}
-            </p>
+      <label htmlFor="activity-input">Preferred activity</label>
+      <input
+        id="activity-input"
+        type="text"
+        value={activityDraft}
+        onChange={(event) => setActivityDraft(event.target.value)}
+        placeholder="e.g. Walking, cycling, swimming"
+      />
 
-            <p>
-              These values are being read from your Personal Context Model.
-            </p>
+      <button
+        className="primary-button"
+        onClick={saveProfileChanges}
+      >
+        Save Changes
+      </button>
 
-            <button
-              className="primary-button"
-              onClick={() => setActiveTab("Home")}
-            >
-              Return to Home
-            </button>
-          </section>
-        )}
+      {profileSaveMessage && (
+        <p role="status">{profileSaveMessage}</p>
+      )}
+    </div>
+
+    <button
+      className="primary-button"
+      onClick={() => setActiveTab("Home")}
+    >
+      Return to Home
+    </button>
+  </section>
+)}
 
         {activeTab === "Insights" && (
           <section className="placeholder-section">

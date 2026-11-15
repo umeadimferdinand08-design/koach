@@ -632,3 +632,35 @@
     flex-direction: column;
   }
 }
+.profile-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 520px;
+  margin: 28px 0;
+}
+
+.profile-edit-form label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.profile-edit-form input {
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid #dce3da;
+  border-radius: 9px;
+  background: #fff;
+  color: #263328;
+  font: inherit;
+}
+
+.profile-edit-form input:focus {
+  outline: 2px solid #6b9674;
+  outline-offset: 2px;
+}
+
+.profile-edit-form button {
+  align-self: flex-start;
+  margin-top: 8px;
+}
