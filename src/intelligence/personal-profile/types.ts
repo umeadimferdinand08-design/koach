@@ -18,6 +18,7 @@ export type ContextCategory =
 
 export type InformationSource =
   | "user_input"
+  | "investigation"
   | "permitted_sensor"
   | "calendar"
   | "system_observation"

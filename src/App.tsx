@@ -1,6 +1,18 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
+
+import {
+  generateDemoObservations,
+} from "./intelligence/observations/demoDataGenerator";
+
+import type {
+  ObservationMode,
+} from "./intelligence/observations/types";
+
+import {
+  detectHistoricalPatterns,
+} from "./intelligence/pattern-detection/patternDetection";
 
 import {
   createPersonalContext,
@@ -74,6 +86,40 @@ function createDemoProfile(): PersonalContext {
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("Home");
+    const [observationMode, setObservationMode] =
+    useState<ObservationMode>("demo");
+
+  const demoObservations = useMemo(
+    () => generateDemoObservations(),
+    []
+  );
+
+  const historicalPatterns = useMemo(
+    () =>
+      detectHistoricalPatterns(
+        demoObservations,
+        observationMode
+      ),
+    [demoObservations, observationMode]
+  );
+  const [onboardingComplete, setOnboardingComplete] = useState(() => {
+  return localStorage.getItem("koach-onboarding-complete") === "true";
+});
+
+const [onboardingStep, setOnboardingStep] = useState(1);
+const [personalisationStarted, setPersonalisationStarted] = useState(false);
+const [personalisationStep, setPersonalisationStep] = useState(1);
+const [currentActivityLevel, setCurrentActivityLevel] = useState("");
+const [weeklyExerciseDays, setWeeklyExerciseDays] = useState("");
+const [usualBedtime, setUsualBedtime] = useState("");
+const [usualWakeTime, setUsualWakeTime] = useState("");
+const [mainBarrier, setMainBarrier] = useState("");
+const [exerciseEnvironment, setExerciseEnvironment] = useState("");
+
+
+const [onboardingGoal, setOnboardingGoal] = useState("");
+const [onboardingActivity, setOnboardingActivity] = useState("");
+const [onboardingSleepGoal, setOnboardingSleepGoal] = useState("8");
   const [goalDraft, setGoalDraft] = useState("");
 const [activityDraft, setActivityDraft] = useState("");
 const [profileSaveMessage, setProfileSaveMessage] = useState("");
@@ -205,8 +251,377 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
   setProfileSaveMessage("Your profile has been updated.");
 }
 
+function completeOnboarding() {
+  const trimmedGoal = onboardingGoal.trim();
+  const trimmedActivity = onboardingActivity.trim();
+  const sleepGoal = Number(onboardingSleepGoal);
+
+  if (!trimmedGoal || !trimmedActivity) {
+    return;
+  }
+
+  if (!Number.isFinite(sleepGoal) || sleepGoal < 4 || sleepGoal > 12) {
+    return;
+  }
+
+  setPersonalContext((currentContext) => {
+    let updatedContext = currentContext;
+
+    const goalFact = updatedContext.facts.find(
+      (fact) => fact.key === "primary_goal"
+    );
+
+    if (goalFact) {
+      updatedContext = updateFact(updatedContext, goalFact.id, {
+        value: trimmedGoal,
+        status: "confirmed",
+      });
+    } else {
+      updatedContext = addFact(updatedContext, {
+        category: "goals",
+        key: "primary_goal",
+        value: trimmedGoal,
+        status: "confirmed",
+        source: "user_input",
+        permissionRequired: false,
+      });
+    }
+
+    const activityFact = updatedContext.facts.find(
+      (fact) => fact.key === "preferred_activity"
+    );
+
+    if (activityFact) {
+      updatedContext = updateFact(updatedContext, activityFact.id, {
+        value: trimmedActivity,
+        status: "confirmed",
+      });
+    } else {
+      updatedContext = addFact(updatedContext, {
+        category: "preferences",
+        key: "preferred_activity",
+        value: trimmedActivity,
+        status: "confirmed",
+        source: "user_input",
+        permissionRequired: false,
+      });
+    }
+
+    const sleepGoalFact = updatedContext.facts.find(
+      (fact) => fact.key === "sleep_goal_hours"
+    );
+
+    if (sleepGoalFact) {
+      updatedContext = updateFact(updatedContext, sleepGoalFact.id, {
+        value: sleepGoal,
+        status: "confirmed",
+      });
+    } else {
+      updatedContext = addFact(updatedContext, {
+        category: "goals",
+        key: "sleep_goal_hours",
+        value: sleepGoal,
+        status: "confirmed",
+        source: "user_input",
+        permissionRequired: false,
+      });
+    }
+
+    return updatedContext;
+  });
+
+  localStorage.setItem("koach-onboarding-complete", "true");
+  setOnboardingComplete(true);
+  setActiveTab("Home");
+}
+
+function savePersonalisationStep1() {
+  setPersonalContext((currentContext) => {
+    let updatedContext = currentContext;
+
+    const answers = [
+      {
+        key: "current_activity_level",
+        value: currentActivityLevel,
+      },
+      {
+        key: "weekly_exercise_days",
+        value: weeklyExerciseDays,
+      },
+    ];
+
+    answers.forEach((answer) => {
+      if (!answer.value) return;
+
+      const existingFact = updatedContext.facts.find(
+        (fact) => fact.key === answer.key
+      );
+
+      if (existingFact) {
+        updatedContext = updateFact(updatedContext, existingFact.id, {
+          value: answer.value,
+          status: "confirmed",
+        });
+      } else {
+        updatedContext = addFact(updatedContext, {
+          category: "behaviour",
+          key: answer.key,
+          value: answer.value,
+          status: "confirmed",
+          source: "user_input",
+          permissionRequired: false,
+        });
+      }
+    });
+
+    return updatedContext;
+  });
+
+  setPersonalisationStep(2);
+}
+
+function savePersonalisationStep2() {
+  setPersonalContext((currentContext) => {
+    let updatedContext = currentContext;
+
+    const answers = [
+      {
+        key: "usual_bedtime",
+        value: usualBedtime,
+      },
+      {
+        key: "usual_wake_time",
+        value: usualWakeTime,
+      },
+    ];
+
+    answers.forEach((answer) => {
+      if (!answer.value) return;
+
+      const existingFact = updatedContext.facts.find(
+        (fact) => fact.key === answer.key
+      );
+
+      if (existingFact) {
+        updatedContext = updateFact(updatedContext, existingFact.id, {
+          value: answer.value,
+          status: "confirmed",
+        });
+      } else {
+        updatedContext = addFact(updatedContext, {
+          category: "routines",
+          key: answer.key,
+          value: answer.value,
+          status: "confirmed",
+          source: "user_input",
+          permissionRequired: false,
+        });
+      }
+    });
+
+    return updatedContext;
+  });
+
+  setPersonalisationStep(3);
+}
+
+function savePersonalisationStep3() {
+  setPersonalContext((currentContext) => {
+    let updatedContext = currentContext;
+
+    const answers = [
+      {
+        key: "main_activity_barrier",
+        value: mainBarrier,
+      },
+      {
+        key: "preferred_exercise_environment",
+        value: exerciseEnvironment,
+      },
+    ];
+
+    answers.forEach((answer) => {
+      if (!answer.value) return;
+
+      const existingFact = updatedContext.facts.find(
+        (fact) => fact.key === answer.key
+      );
+
+      if (existingFact) {
+        updatedContext = updateFact(updatedContext, existingFact.id, {
+          value: answer.value,
+          status: "confirmed",
+        });
+      } else {
+        updatedContext = addFact(updatedContext, {
+          category: "preferences",
+          key: answer.key,
+          value: answer.value,
+          status: "confirmed",
+          source: "user_input",
+          permissionRequired: false,
+        });
+      }
+    });
+
+    return updatedContext;
+  });
+
+  setPersonalisationStarted(false);
+  setPersonalisationStep(1);
+  setActiveTab("Home");
+}
+
+
+
   return (
-    <main className="app-shell">
+    <>
+      {!onboardingComplete && (
+        <section className="onboarding-screen">
+          <div className="onboarding-card">
+            <div className="brand">
+              koach<span>.</span>
+            </div>
+
+            <p>YOUR PERSONAL HEALTH COACH</p>
+
+            <h1>Let's make progress that fits your life.</h1>
+
+            <p>
+              Before we build your routine, let's understand what matters
+              to you.
+            </p>
+
+            <div className="onboarding-progress">
+              Step {onboardingStep} of 3
+            </div>
+
+            {onboardingStep === 1 && (
+  <div className="onboarding-form">
+    <h2>What would you like to improve?</h2>
+
+    <p>
+      Choose a goal that matters to you. Koach will help you
+      build a routine around your everyday life.
+    </p>
+
+    <label htmlFor="onboarding-goal">Your primary goal</label>
+
+    <input
+      id="onboarding-goal"
+      type="text"
+      value={onboardingGoal}
+      onChange={(event) => setOnboardingGoal(event.target.value)}
+      placeholder="e.g. Build consistent exercise habits"
+    />
+
+    <button
+      className="primary-button"
+      disabled={!onboardingGoal.trim()}
+      onClick={() => setOnboardingStep(2)}
+    >
+      Continue
+    </button>
+  </div>
+)}
+
+{onboardingStep === 2 && (
+  <div className="onboarding-form">
+    <h2>Let's understand your preferences.</h2>
+
+    <p>
+      Your plan should fit the activities you enjoy and the
+      amount of sleep you want to aim for.
+    </p>
+
+    <label htmlFor="onboarding-activity">
+      What physical activity do you prefer?
+    </label>
+
+    <input
+      id="onboarding-activity"
+      type="text"
+      value={onboardingActivity}
+      onChange={(event) => setOnboardingActivity(event.target.value)}
+      placeholder="e.g. Walking, cycling, dancing"
+    />
+
+    <label htmlFor="onboarding-sleep">
+      How many hours of sleep would you like to aim for?
+    </label>
+
+    <input
+      id="onboarding-sleep"
+      type="number"
+      min="4"
+      max="12"
+      step="0.5"
+      value={onboardingSleepGoal}
+      onChange={(event) => setOnboardingSleepGoal(event.target.value)}
+    />
+
+    <button
+      className="secondary-button"
+      onClick={() => setOnboardingStep(1)}
+    >
+      Back
+    </button>
+
+    <button
+      className="primary-button"
+      disabled={
+        !onboardingActivity.trim() ||
+        Number(onboardingSleepGoal) < 4 ||
+        Number(onboardingSleepGoal) > 12
+      }
+      onClick={() => setOnboardingStep(3)}
+    >
+      Continue
+    </button>
+  </div>
+)}
+
+{onboardingStep === 3 && (
+  <div className="onboarding-form">
+    <h2>Koach learns your rhythm.</h2>
+
+    <p>
+      During your first 2–3 days, Koach will begin with the
+      information you've provided and gradually learn about
+      your routines.
+    </p>
+
+    <p>
+      Any patterns it identifies will be presented for your
+      review. Koach won't treat an assumption as a confirmed
+      fact without your input.
+    </p>
+
+    <p>
+      You remain in control of your information and choices.
+    </p>
+
+    <button
+      className="secondary-button"
+      onClick={() => setOnboardingStep(2)}
+    >
+      Back
+    </button>
+
+    <button
+      className="primary-button"
+      onClick={completeOnboarding}
+    >
+      Start my Koach journey
+    </button>
+  </div>
+)}
+          </div>
+        </section>
+      )}
+
+      {onboardingComplete && (
+        <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
           koach<span>.</span>
@@ -252,7 +667,7 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
           <div className="date-label">YOUR DAILY OVERVIEW</div>
         </header>
 
-        {activeTab === "Home" && (
+         {activeTab === "Home" && (
           <>
             <section className="welcome-section">
               <p className="eyebrow">YOUR HEALTH, UNDERSTOOD.</p>
@@ -267,7 +682,272 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
                 Your health journey isn't about being perfect. It's about
                 finding what works for you, consistently.
               </p>
-            </section>
+                       </section>
+
+<section className="profile-completion-card">
+  <div className="card-heading">
+    <span>DATA MODE</span>
+    <span className="metric-note">
+      {observationMode === "demo" ? "SIMULATED DATA" : "LIVE DATA"}
+    </span>
+  </div>
+
+  <h2>Choose your data experience</h2>
+
+  <p>
+    Demo Mode uses simulated observations. Live Mode will use
+    genuine data sources when connected and authorised.
+  </p>
+
+  <div className="recommendation-actions">
+    <button
+      className={
+        observationMode === "demo"
+          ? "primary-button"
+          : "secondary-button"
+      }
+      onClick={() => setObservationMode("demo")}
+      aria-pressed={observationMode === "demo"}
+    >
+      Demo Mode
+    </button>
+
+    <button
+      className={
+        observationMode === "live"
+          ? "primary-button"
+          : "secondary-button"
+      }
+      onClick={() => setObservationMode("live")}
+      aria-pressed={observationMode === "live"}
+    >
+      Live Mode
+    </button>
+  </div>
+
+  <p className="profile-completion-note">
+    {observationMode === "demo"
+      ? "You are viewing clearly labelled simulated observations."
+      : "No live data sources are connected yet. Historical findings will remain empty."}
+  </p>
+</section>
+
+{!personalisationStarted && (
+  <section className="profile-completion-card">
+    <div className="card-heading">
+      <span>YOUR PERSONAL PROFILE</span>
+      <span className="metric-note">IN PROGRESS</span>
+    </div>
+
+    <h2>Your profile is taking shape.</h2>
+
+    <p>
+      Help Koach understand your routines, preferences and
+      everyday challenges so it can make more relevant
+      recommendations.
+    </p>
+
+    <div className="profile-completion-progress">
+      <div className="progress-track">
+        <div className="progress-fill" style={{ width: "25%" }} />
+      </div>
+      <span>Getting started</span>
+    </div>
+
+    <button
+      className="primary-button"
+      onClick={() => setPersonalisationStarted(true)}
+    >
+      Continue personalising
+    </button>
+
+    <p className="profile-completion-note">
+      You can complete this at your own pace.
+    </p>
+  </section>
+)}
+           
+{personalisationStarted && personalisationStep === 1 && (
+  <section className="profile-completion-card">
+    <div className="card-heading">
+      <span>PERSONALISING KOACH</span>
+      <span className="metric-note">STEP 1 OF 3</span>
+    </div>
+
+    <h2>Let's understand your activity.</h2>
+
+    <p>
+      Tell us a little about your current movement habits.
+      There are no right or wrong answers.
+    </p>
+
+    <div className="profile-edit-form">
+      <label htmlFor="activity-level">
+        How active are you on a typical day?
+      </label>
+
+      <select
+        id="activity-level"
+        value={currentActivityLevel}
+        onChange={(event) => setCurrentActivityLevel(event.target.value)}
+      >
+        <option value="">Select an answer</option>
+        <option value="Mostly sitting">Mostly sitting</option>
+        <option value="Lightly active">Lightly active</option>
+        <option value="Moderately active">Moderately active</option>
+        <option value="Very active">Very active</option>
+      </select>
+
+      <label htmlFor="exercise-days">
+        How many days do you usually exercise each week?
+      </label>
+
+      <select
+        id="exercise-days"
+        value={weeklyExerciseDays}
+        onChange={(event) => setWeeklyExerciseDays(event.target.value)}
+      >
+        <option value="">Select an answer</option>
+        <option value="0">0 days</option>
+        <option value="1-2">1–2 days</option>
+        <option value="3-4">3–4 days</option>
+        <option value="5-7">5–7 days</option>
+      </select>
+    </div>
+
+    <button
+      className="primary-button"
+      onClick={savePersonalisationStep1}
+    >
+      Continue
+    </button>
+
+    <button
+      className="secondary-button"
+      onClick={() => setPersonalisationStarted(false)}
+    >
+      Do this later
+    </button>
+  </section>
+)}
+
+{personalisationStarted && personalisationStep === 2 && (
+  <section className="profile-completion-card">
+    <div className="card-heading">
+      <span>PERSONALISING KOACH</span>
+      <span className="metric-note">STEP 2 OF 3</span>
+    </div>
+
+    <h2>Let's understand your sleep routine.</h2>
+
+    <p>
+      Knowing your usual sleep schedule helps Koach
+      suggest routines that fit your day.
+    </p>
+
+    <div className="profile-edit-form">
+      <label htmlFor="usual-bedtime">What time do you usually go to bed?</label>
+      <input
+        id="usual-bedtime"
+        type="time"
+        value={usualBedtime}
+        onChange={(event) => setUsualBedtime(event.target.value)}
+      />
+
+      <label htmlFor="usual-wake-time">What time do you usually wake up?</label>
+      <input
+        id="usual-wake-time"
+        type="time"
+        value={usualWakeTime}
+        onChange={(event) => setUsualWakeTime(event.target.value)}
+      />
+    </div>
+
+    <button
+      className="primary-button"
+      onClick={savePersonalisationStep2}
+    >
+      Continue
+    </button>
+
+    <button
+      className="secondary-button"
+      onClick={() => setPersonalisationStarted(false)}
+    >
+      Do this later
+    </button>
+  </section>
+)}
+
+{personalisationStarted && personalisationStep === 3 && (
+  <section className="profile-completion-card">
+    <div className="card-heading">
+      <span>PERSONALISING KOACH</span>
+      <span className="metric-note">STEP 3 OF 3</span>
+    </div>
+
+    <h2>What makes staying active difficult?</h2>
+
+    <p>
+      Understanding your challenges helps Koach suggest
+      realistic changes rather than generic routines.
+    </p>
+
+    <div className="profile-edit-form">
+      <label htmlFor="main-barrier">
+        What is your biggest challenge?
+      </label>
+
+      <select
+        id="main-barrier"
+        value={mainBarrier}
+        onChange={(event) => setMainBarrier(event.target.value)}
+      >
+        <option value="">Select an answer</option>
+        <option value="Lack of time">Lack of time</option>
+        <option value="Low motivation">Low motivation</option>
+        <option value="Tiredness or low energy">Tiredness or low energy</option>
+        <option value="Inconsistent schedule">Inconsistent schedule</option>
+        <option value="Limited access to facilities">Limited access to facilities</option>
+        <option value="Other or unsure">Other or unsure</option>
+      </select>
+
+      <label htmlFor="exercise-environment">
+        Where do you prefer to be active?
+      </label>
+
+      <select
+        id="exercise-environment"
+        value={exerciseEnvironment}
+        onChange={(event) => setExerciseEnvironment(event.target.value)}
+      >
+        <option value="">Select an answer</option>
+        <option value="At home">At home</option>
+        <option value="Outdoors">Outdoors</option>
+        <option value="At a gym">At a gym</option>
+        <option value="Anywhere convenient">Anywhere convenient</option>
+        <option value="No preference">No preference</option>
+      </select>
+    </div>
+
+    <button
+      className="primary-button"
+      onClick={savePersonalisationStep3}
+    >
+      Complete my profile
+    </button>
+
+    <button
+      className="secondary-button"
+      onClick={() => setPersonalisationStarted(false)}
+    >
+      Do this later
+    </button>
+  </section>
+)}
+
+
+
 
             <section className="overview-grid">
               <article className="overview-card goal-card">
@@ -279,8 +959,8 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
                 <h2>{primaryGoal}</h2>
 
                 <p>
-                  Small, sustainable actions that fit into your everyday life.
-                </p>
+  Small, sustainable actions that fit into your everyday life.
+</p>
 
                 <div className="goal-progress">
                   <div className="progress-track">
@@ -535,9 +1215,46 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
               </article>
             )}
 
-            <p>
-              This is sample information, not a finding from live monitoring.
-            </p>
+           
+<section className="reason-box">
+  <strong>Historical Pattern Findings</strong>
+
+  <p>
+    Data mode: {observationMode === "demo" ? "Demo Mode — simulated data" : "Live Mode"}
+  </p>
+
+  {historicalPatterns.length > 0 ? (
+    historicalPatterns.map((pattern) => (
+      <article key={pattern.id}>
+        <h3>{pattern.title}</h3>
+
+        <p>{pattern.description}</p>
+
+        <p>
+          Status: {pattern.status}
+          {" · "}
+          Confidence: {pattern.confidence}
+        </p>
+
+        <p>{pattern.explanation}</p>
+
+        <p>
+          Supporting observations: {pattern.evidenceObservationIds?.length ?? 0}
+        </p>
+      </article>
+    ))
+  ) : (
+    <p>
+      No historical patterns are available in this data mode yet.
+    </p>
+  )}
+</section>
+
+<p>
+  Historical findings are candidates for investigation, not confirmed
+  explanations of behaviour.
+</p>
+
 
             <button
               className="primary-button"
@@ -586,8 +1303,10 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
             </button>
           </section>
         )}
-      </section>
-    </main>
+           </section>
+        </main>
+      )}
+    </>
   );
 }
 
