@@ -22,19 +22,32 @@ const validResearchEvidence: EvidenceItem = {
   isValid: true,
   limitations: [],
   scientificResearch: {
-    title: "Physical Activity and Health",
-    authors: ["Author One", "Author Two"],
-    publicationYear: 2024,
-    publicationSource: "Journal of Health Research",
-    doi: "10.1234/example.2024",
-    studyDesign: "Systematic review",
-    population: "Adults",
-    sampleSize: 1000,
-    findings: "Physical activity supports general health.",
-    limitations: ["Limited population diversity."],
-    peerReviewed: true,
-    appraisalStatus: "approved",
-  },
+  title: "Physical Activity and Health",
+  authors: ["Author One", "Author Two"],
+  publicationYear: 2024,
+  publicationSource: "Journal of Health Research",
+  doi: "10.1234/example.2024",
+  studyDesign: "Systematic review",
+  population: "Adults",
+  sampleSize: 1000,
+  findings: "Physical activity supports general health.",
+  limitations: ["Limited population diversity."],
+  peerReviewed: true,
+  appraisalStatus: "approved",
+  appraisal: {
+    appraisedBy: "Koach evidence reviewer",
+    appraisedAt: "2026-11-16T10:00:00.000Z",
+    strengths: [
+      "Uses a systematic review study design.",
+      "Includes a clearly described adult population."
+    ],
+    weaknesses: [
+      "Limited population diversity."
+    ],
+    rationale:
+      "Approved for prototype use following documented methodological review, subject to the stated limitations."
+  }
+},
 };
 
 describe("validateEvidenceItem", () => {
@@ -130,6 +143,16 @@ describe("validateEvidenceItem", () => {
   it("accepts valid scientific research evidence", () => {
     expect(validateEvidenceItem(validResearchEvidence)).toEqual([]);
   });
+
+  it("rejects approved scientific research without an appraisal", () => {
+  const evidence = structuredClone(validResearchEvidence);
+
+  evidence.scientificResearch!.appraisal = undefined;
+
+  expect(validateEvidenceItem(evidence)).toContain(
+    "Approved research must include a documented appraisal."
+  );
+});
 
   it("rejects scientific research without research details", () => {
     const evidence = {

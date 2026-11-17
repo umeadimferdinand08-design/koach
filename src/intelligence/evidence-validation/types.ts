@@ -51,6 +51,13 @@ export interface EvidenceAssessmentRequest {
   knownConflicts?: string[];
 }
 
+export interface ResearchAppraisal {
+  appraisedBy: string;
+  appraisedAt: string;
+  strengths: string[];
+  weaknesses: string[];
+  rationale: string;
+}
 
 export interface ScientificResearchDetails {
   title: string;
@@ -69,9 +76,10 @@ export interface ScientificResearchDetails {
 
   peerReviewed?: boolean;
   appraisalStatus:
-  | "not_reviewed"
-  | "under_review"
-  | "approved"
-  | "rejected";
+    | "not_reviewed"
+    | "under_review"
+    | "approved"
+    | "rejected";
+  appraisal?: ResearchAppraisal;
 }
 

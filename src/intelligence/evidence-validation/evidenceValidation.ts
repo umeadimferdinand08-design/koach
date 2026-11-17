@@ -166,6 +166,57 @@ if (
     ) {
       errors.push("Peer review status must be a boolean.");
     }
+        if (
+      research.appraisalStatus === "approved" &&
+      !research.appraisal
+    ) {
+      errors.push(
+        "Approved research must include a documented appraisal."
+      );
+    }
+
+        if (research.appraisal) {
+      const appraisal = research.appraisal;
+
+      if (
+        typeof appraisal.appraisedBy !== "string" ||
+        !appraisal.appraisedBy.trim()
+      ) {
+        errors.push("Research appraiser must be identified.");
+      }
+
+      if (
+        typeof appraisal.appraisedAt !== "string" ||
+        Number.isNaN(Date.parse(appraisal.appraisedAt))
+      ) {
+        errors.push("Research appraisal date must be valid.");
+      }
+
+      if (
+        !Array.isArray(appraisal.strengths) ||
+        !appraisal.strengths.every(
+          (item) => typeof item === "string" && item.trim().length > 0
+        )
+      ) {
+        errors.push("Research appraisal strengths must be non-empty strings.");
+      }
+
+      if (
+        !Array.isArray(appraisal.weaknesses) ||
+        !appraisal.weaknesses.every(
+          (item) => typeof item === "string" && item.trim().length > 0
+        )
+      ) {
+        errors.push("Research appraisal weaknesses must be non-empty strings.");
+      }
+
+      if (
+        typeof appraisal.rationale !== "string" ||
+        !appraisal.rationale.trim()
+      ) {
+        errors.push("Research appraisal rationale is required.");
+      }
+    }
   }
 
 
