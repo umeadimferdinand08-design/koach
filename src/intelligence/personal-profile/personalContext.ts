@@ -91,6 +91,9 @@ export function updateFact(
       return {
         ...fact,
         ...updates,
+        ...(updates.status === "confirmed"
+          ? { lastConfirmedAt: now }
+          : {}),
         lastUpdatedAt: now,
       };
     }),

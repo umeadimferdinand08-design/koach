@@ -34,6 +34,22 @@ describe("Koach Personal Context Engine", () => {
     expect(updated.facts[0].value).toBe("walking");
   });
 
+    it("records simulated facts with explicit simulated provenance", () => {
+    const context = createPersonalContext();
+
+    const updated = addFact(context, {
+      category: "health",
+      key: "activity_minutes",
+      value: 32,
+      status: "observed",
+      source: "simulated",
+      permissionRequired: false,
+    });
+
+    expect(updated.facts).toHaveLength(1);
+    expect(updated.facts[0].source).toBe("simulated");
+  });
+
   it("retrieves facts by category", () => {
     let context = createPersonalContext();
 
@@ -88,6 +104,28 @@ describe("Koach Personal Context Engine", () => {
 
     expect(context.facts[0].value).toBe("cycling");
     expect(context.facts[0].source).toBe("system_observation");
+  });
+
+    it("records confirmation time when an update confirms a fact", () => {
+    let context = createPersonalContext();
+
+    context = addFact(context, {
+      category: "routines",
+      key: "usual_bedtime",
+      value: "23:00",
+      status: "observed",
+      source: "system_observation",
+      permissionRequired: false,
+    });
+
+    const factId = context.facts[0].id;
+
+    context = updateFact(context, factId, {
+      status: "confirmed",
+    });
+
+    expect(context.facts[0].status).toBe("confirmed");
+    expect(context.facts[0].lastConfirmedAt).toBeDefined();
   });
 
   it("confirms an observation", () => {

@@ -40,7 +40,7 @@ function createDemoProfile(): PersonalContext {
     key: "primary_goal",
     value: "Build consistent exercise habits",
     status: "confirmed",
-    source: "user_input",
+    source: "simulated",
     permissionRequired: false,
   });
 
@@ -49,7 +49,7 @@ function createDemoProfile(): PersonalContext {
     key: "preferred_activity",
     value: "Walking",
     status: "confirmed",
-    source: "user_input",
+    source: "simulated",
     permissionRequired: false,
   });
 
@@ -58,7 +58,7 @@ function createDemoProfile(): PersonalContext {
     key: "activity_minutes",
     value: 32,
     status: "observed",
-    source: "permitted_sensor",
+    source: "simulated",
     permissionRequired: true,
   });
 
@@ -67,7 +67,7 @@ function createDemoProfile(): PersonalContext {
     key: "sleep_hours",
     value: 7.2,
     status: "observed",
-    source: "permitted_sensor",
+    source: "simulated",
     permissionRequired: true,
   });
 
@@ -76,7 +76,7 @@ function createDemoProfile(): PersonalContext {
     key: "morning_activity_pattern",
     value: "Morning exercise may be difficult to accommodate",
     status: "observed",
-    source: "system_observation",
+    source: "simulated",
     confidence: 0.65,
     permissionRequired: false,
   });

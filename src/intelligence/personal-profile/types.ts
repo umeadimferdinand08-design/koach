@@ -22,7 +22,8 @@ export type InformationSource =
   | "permitted_sensor"
   | "calendar"
   | "system_observation"
-  | "derived";
+  | "derived"
+  | "simulated";
 
 export interface PersonalFact {
   id: string;
