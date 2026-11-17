@@ -59,6 +59,20 @@ export interface ResearchAppraisal {
   rationale: string;
 }
 
+export type ResearchScreeningDecision =
+  | "pass"
+  | "needs_review"
+  | "reject";
+
+export interface ResearchQualityScreening {
+  decision: ResearchScreeningDecision;
+  strengths: string[];
+  concerns: string[];
+  missingInformation: string[];
+  assessedAt: string;
+  screeningVersion: string;
+}
+
 export interface ScientificResearchDetails {
   title: string;
   authors: string[];

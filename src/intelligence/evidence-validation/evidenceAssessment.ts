@@ -7,6 +7,8 @@ import type {
 
 import { validateEvidenceItem } from "./evidenceValidation";
 
+import { screenResearchQuality } from "./researchQualityScreening";
+
 const QUALITY_RANK = {
   low: 1,
   moderate: 2,
@@ -51,6 +53,8 @@ export function assessEvidence(
 
   const evidenceItems: EvidenceItem[] = request.evidence;
 
+  let requiresResearchReview = false;
+
   const usableEvidence = evidenceItems.filter((evidence) => {
     const validationErrors = validateEvidenceItem(evidence);
 
@@ -72,6 +76,30 @@ export function assessEvidence(
       );
       return false;
     }
+
+    if (evidence.sourceType === "scientific_research") {
+  const screening = screenResearchQuality(evidence);
+
+  if (screening.decision !== "pass") {
+    excludedEvidenceIds.push(evidence.id);
+
+    if (screening.decision === "needs_review") {
+      requiresResearchReview = true;
+      reasons.push(
+        `Scientific research ${evidence.id} requires further quality review.`
+      );
+    } else {
+      reasons.push(
+        `Scientific research ${evidence.id} failed quality screening.`
+      );
+    }
+
+    limitations.push(...screening.concerns);
+    limitations.push(...screening.missingInformation);
+
+    return false;
+  }
+}
 
     return true;
   });
@@ -143,12 +171,13 @@ export function assessEvidence(
   }
 
   const decision =
-    blockingReasons.length === 0
-      ? "sufficient"
-      : evidenceItems.length > 0 &&
-          usableEvidence.length === 0
-        ? "rejected"
-        : "insufficient";
+  blockingReasons.length === 0
+    ? "sufficient"
+    : evidenceItems.length > 0 &&
+        usableEvidence.length === 0 &&
+        !requiresResearchReview
+      ? "rejected"
+      : "insufficient";
 
   return {
     id: assessmentId,
