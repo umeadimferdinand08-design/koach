@@ -46,11 +46,33 @@ export interface EvidenceAssessmentRequest {
   claim: string;
   purpose: string;
   evidence: EvidenceItem[];
+  researchRelevanceAssessments?: ResearchClaimRelevanceAssessment[];
   minimumQuality?: EvidenceQuality;
   requiredSourceTypes?: EvidenceSourceType[];
   knownConflicts?: string[];
 }
 
+export type ResearchRelevanceDecision =
+  | "relevant"
+  | "needs_review"
+  | "not_relevant";
+
+export type ResearchAlignment =
+  | "aligned"
+  | "partially_aligned"
+  | "not_aligned"
+  | "unclear";
+
+export interface ResearchClaimRelevanceAssessment {
+  evidenceId: string;
+  decision: ResearchRelevanceDecision;
+  claimAlignment: ResearchAlignment;
+  outcomeAlignment: ResearchAlignment;
+  populationAlignment: ResearchAlignment;
+  assessedBy: string;
+  assessedAt: string;
+  rationale: string;
+}
 export interface ResearchAppraisal {
   appraisedBy: string;
   appraisedAt: string;

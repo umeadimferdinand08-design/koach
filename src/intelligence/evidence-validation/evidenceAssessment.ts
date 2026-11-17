@@ -15,6 +15,53 @@ const QUALITY_RANK = {
   high: 3,
 };
 
+function hasValidResearchRelevance(
+  evidenceId: string,
+  request: EvidenceAssessmentRequest
+): boolean {
+  const assessments = request.researchRelevanceAssessments;
+
+  if (!Array.isArray(assessments)) {
+    return false;
+  }
+
+  const matchingAssessments = assessments.filter(
+    (assessment) =>
+      assessment !== null &&
+      typeof assessment === "object" &&
+      assessment.evidenceId === evidenceId
+  );
+
+  if (matchingAssessments.length !== 1) {
+    return false;
+  }
+
+  const assessment = matchingAssessments[0];
+
+  const validAlignments = [
+    "aligned",
+    "partially_aligned",
+  ];
+
+  if (
+    assessment.decision !== "relevant" ||
+    !validAlignments.includes(assessment.claimAlignment) ||
+    !validAlignments.includes(assessment.outcomeAlignment) ||
+    !validAlignments.includes(assessment.populationAlignment) ||
+    typeof assessment.assessedBy !== "string" ||
+    typeof assessment.assessedAt !== "string" ||
+    typeof assessment.rationale !== "string"
+  ) {
+    return false;
+  }
+
+  return (
+    assessment.assessedBy.trim().length > 0 &&
+    !Number.isNaN(Date.parse(assessment.assessedAt)) &&
+    assessment.rationale.trim().length > 0
+  );
+}
+
 export function assessEvidence(
   request: EvidenceAssessmentRequest
 ): EvidenceAssessment {
@@ -52,7 +99,46 @@ export function assessEvidence(
   }
 
   const evidenceItems: EvidenceItem[] = request.evidence;
+  const knownEvidenceIds = new Set(
+    evidenceItems.map((evidence) => evidence.id)
+  );
 
+  const relevanceAssessments = request.researchRelevanceAssessments;
+
+  if (
+    relevanceAssessments !== undefined &&
+    !Array.isArray(relevanceAssessments)
+  ) {
+    blockingReasons.push(
+      "Research relevance assessments must be provided as an array."
+    );
+
+    reasons.push(
+      "The research relevance assessments field contains an invalid format."
+    );
+  }
+
+  const unknownResearchAssessments = Array.isArray(relevanceAssessments)
+    ? relevanceAssessments.filter(
+      (assessment) =>
+        assessment !== null &&
+        typeof assessment === "object" &&
+        !knownEvidenceIds.has(assessment.evidenceId)
+    )
+    : [];
+
+  if (unknownResearchAssessments.length > 0) {
+    blockingReasons.push(
+      "Some research relevance assessments reference evidence that does not exist in this request."
+    );
+
+    reasons.push(
+      ...unknownResearchAssessments.map(
+        (assessment) =>
+          `Research relevance assessment references unknown evidence ID: ${assessment.evidenceId}.`
+      )
+    );
+  }
   let requiresResearchReview = false;
 
   const usableEvidence = evidenceItems.filter((evidence) => {
@@ -78,28 +164,42 @@ export function assessEvidence(
     }
 
     if (evidence.sourceType === "scientific_research") {
-  const screening = screenResearchQuality(evidence);
+      const screening = screenResearchQuality(evidence);
 
-  if (screening.decision !== "pass") {
-    excludedEvidenceIds.push(evidence.id);
+      if (screening.decision !== "pass") {
+        excludedEvidenceIds.push(evidence.id);
 
-    if (screening.decision === "needs_review") {
-      requiresResearchReview = true;
-      reasons.push(
-        `Scientific research ${evidence.id} requires further quality review.`
-      );
-    } else {
-      reasons.push(
-        `Scientific research ${evidence.id} failed quality screening.`
-      );
+        if (screening.decision === "needs_review") {
+          requiresResearchReview = true;
+          reasons.push(
+            `Scientific research ${evidence.id} requires further quality review.`
+          );
+        } else {
+          reasons.push(
+            `Scientific research ${evidence.id} failed quality screening.`
+          );
+        }
+
+        limitations.push(...screening.concerns);
+        limitations.push(...screening.missingInformation);
+
+        return false;
+      }
     }
 
-    limitations.push(...screening.concerns);
-    limitations.push(...screening.missingInformation);
+    if (
+      evidence.sourceType === "scientific_research" &&
+      !hasValidResearchRelevance(evidence.id, request)
+    ) {
+      excludedEvidenceIds.push(evidence.id);
+      requiresResearchReview = true;
 
-    return false;
-  }
-}
+      reasons.push(
+        `Scientific research ${evidence.id} does not have an approved claim relevance assessment.`
+      );
+
+      return false;
+    }
 
     return true;
   });
@@ -171,13 +271,13 @@ export function assessEvidence(
   }
 
   const decision =
-  blockingReasons.length === 0
-    ? "sufficient"
-    : evidenceItems.length > 0 &&
+    blockingReasons.length === 0
+      ? "sufficient"
+      : evidenceItems.length > 0 &&
         usableEvidence.length === 0 &&
         !requiresResearchReview
-      ? "rejected"
-      : "insufficient";
+        ? "rejected"
+        : "insufficient";
 
   return {
     id: assessmentId,
