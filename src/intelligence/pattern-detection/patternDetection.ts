@@ -14,11 +14,44 @@ import type {
   ObservationMode,
 } from "../observations/types";
 
+function getFactValue(fact: PersonalFact): unknown {
+  const value = fact.value;
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "extractedValue" in value
+  ) {
+    return value.extractedValue;
+  }
+
+  return value;
+}
+
 function findFact(
   context: PersonalContext,
-  key: string
+  key: string,
+  mode?: ObservationMode
 ): PersonalFact | undefined {
-  return context.facts.find((fact) => fact.key === key);
+  const eligibleFacts = context.facts.filter((fact) => {
+    if (fact.key !== key) return false;
+    if (fact.status === "unknown") return false;
+    if (fact.permissionRequired) return false;
+    if (fact.source === "derived") return false;
+
+    if (fact.source === "simulated") {
+      return mode === undefined || mode === "demo";
+    }
+
+    if (fact.source === "user_input") return true;
+
+    return mode === "live";
+  });
+
+  return (
+    eligibleFacts.find((fact) => fact.source === "user_input") ??
+    eligibleFacts[0]
+  );
 }
 
 function createPattern(
@@ -44,20 +77,23 @@ function createPattern(
 }
 
 export function detectCandidatePatterns(
-  context: PersonalContext
+  context: PersonalContext,
+  mode?: ObservationMode
 ): DetectedPattern[] {
   const patterns: DetectedPattern[] = [];
 
   // Activity routine signal
   const activityLevel = findFact(
-    context,
-    "current_activity_level"
-  );
+  context,
+  "current_activity_level",
+  mode
+);
 
   const exerciseDays = findFact(
-    context,
-    "weekly_exercise_days"
-  );
+  context,
+  "weekly_exercise_days",
+  mode
+);
 
   if (activityLevel && exerciseDays) {
     patterns.push(
@@ -66,9 +102,9 @@ export function detectCandidatePatterns(
         "activity",
         "Your current activity baseline",
         `You describe your current activity level as ${String(
-          activityLevel.value
+          getFactValue(activityLevel)
         )} and report exercising ${String(
-          exerciseDays.value
+          getFactValue(exerciseDays)
         )} days per week.`,
         [activityLevel, exerciseDays],
         "This is a starting picture of your reported activity habits. More observations are needed to identify a recurring behavioural pattern."
@@ -78,14 +114,16 @@ export function detectCandidatePatterns(
 
   // Sleep routine signal
   const bedtime = findFact(
-    context,
-    "usual_bedtime"
-  );
+  context,
+  "usual_bedtime",
+  mode
+);
 
   const wakeTime = findFact(
-    context,
-    "usual_wake_time"
-  );
+  context,
+  "usual_wake_time",
+  mode
+);
 
   if (bedtime && wakeTime) {
     patterns.push(
@@ -94,9 +132,9 @@ export function detectCandidatePatterns(
         "sleep",
         "Your reported sleep schedule",
         `You report usually going to bed at ${String(
-          bedtime.value
+          getFactValue(bedtime)
         )} and waking up at ${String(
-          wakeTime.value
+          getFactValue(wakeTime)
         )}.`,
         [bedtime, wakeTime],
         "This provides an initial picture of your sleep routine. Koach will need observations across multiple days before identifying a consistent sleep pattern."

@@ -12,8 +12,12 @@ import type {
 
 import {
   detectHistoricalPatterns,
+  detectCandidatePatterns,
 } from "./intelligence/pattern-detection/patternDetection";
 
+import {
+  generateRecommendation,
+} from "./intelligence/recommendation-engine/recommendationEngine";
 import {
   createPersonalContext,
   addFact,
@@ -23,6 +27,18 @@ import {
 
 import type { PersonalContext } from "./intelligence/personal-profile/types";
 
+import {
+  interpretUserMessage,
+} from "./intelligence/natural-language/responseInterpreter";
+
+import {
+  prototypeInterpretationProvider,
+} from "./intelligence/natural-language/prototypeProvider";
+
+import {
+  integrateInterpretation,
+} from "./intelligence/natural-language/contextIntegrator";
+
 type Tab = "Home" | "My Goals" | "Insights" | "Data & Privacy";
 
 type RecommendationStatus =
@@ -30,6 +46,15 @@ type RecommendationStatus =
   | "accepted"
   | "declined"
   | "modified";
+
+  type ScheduledActivity = {
+  id: string;
+  title: string;
+  durationMinutes: number;
+  timing: string;
+  location: string;
+  status: "scheduled";
+};
 
 // Creates a clearly labelled demonstration profile.
 function createDemoProfile(): PersonalContext {
@@ -145,6 +170,51 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
 
     return createDemoProfile();
   });
+
+    const candidatePatterns = useMemo(
+    () => detectCandidatePatterns(personalContext, observationMode),
+    [personalContext, observationMode]
+  );
+
+  const allPatterns = useMemo(
+    () => [...candidatePatterns, ...historicalPatterns],
+    [candidatePatterns, historicalPatterns]
+  );
+
+  const recommendationResult = useMemo(
+    () =>
+      generateRecommendation({
+        mode: observationMode,
+        patterns: allPatterns,
+        facts: personalContext.facts,
+      }),
+    [observationMode, allPatterns, personalContext]
+  );
+
+  const currentRecommendation =
+    recommendationResult.recommendation;
+
+
+type CoachMessage = {
+  id: string;
+  role: "user" | "coach";
+  text: string;
+  timestamp: string;
+};
+
+const [coachMessages, setCoachMessages] = useState<CoachMessage[]>(() => {
+  try {
+    const saved = localStorage.getItem("koach-conversation");
+    return saved ? JSON.parse(saved) as CoachMessage[] : [];
+  } catch {
+    return [];
+  }
+});
+
+const [coachInput, setCoachInput] = useState("");
+const [coachLoading, setCoachLoading] = useState(false);
+const [coachError, setCoachError] = useState("");
+
   useEffect(() => {
   localStorage.setItem(
     "koach-personal-context",
@@ -152,17 +222,131 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
   );
 }, [personalContext]);
 
+useEffect(() => {
+  localStorage.setItem(
+    "koach-conversation",
+    JSON.stringify(coachMessages)
+  );
+}, [coachMessages]);
+
+
   const [recommendationStatus, setRecommendationStatus] =
     useState<RecommendationStatus>("pending");
+
+    const [showRecommendationReason, setShowRecommendationReason] =
+  useState(false);
+
+    const [scheduledActivities, setScheduledActivities] =
+  useState<ScheduledActivity[]>(() => {
+    try {
+      const saved = localStorage.getItem("koach-scheduled-activities");
+      return saved ? JSON.parse(saved) as ScheduledActivity[] : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+  localStorage.setItem(
+    "koach-scheduled-activities",
+    JSON.stringify(scheduledActivities)
+  );
+}, [scheduledActivities]);
 
   const tabs: Tab[] = ["Home", "My Goals", "Insights", "Data & Privacy"];
 
   // Read values from the Personal Context Model.
   function getProfileValue(key: string, fallback: string): string {
-    const fact = personalContext.facts.find((item) => item.key === key);
+  const eligibleFacts = personalContext.facts.filter((fact) => {
+    if (fact.key !== key) return false;
 
-    return fact ? String(fact.value) : fallback;
+    // User-provided information is valid in both modes.
+    if (fact.source === "user_input") return true;
+
+    // Simulated information is available only in Demo Mode.
+    if (fact.source === "simulated") {
+      return observationMode === "demo";
+    }
+
+    // Derived information is excluded until its source lineage
+    // can be independently verified.
+    if (fact.source === "derived") return false;
+
+    // Other non-simulated sources are eligible in Live Mode.
+    return observationMode === "live";
+  });
+
+  // Prefer user-provided information over simulated information.
+  const fact =
+    eligibleFacts.find((item) => item.source === "user_input") ??
+    eligibleFacts[0];
+
+  if (!fact) return fallback;
+
+const storedValue = fact.value;
+
+if (
+  storedValue &&
+  typeof storedValue === "object" &&
+  "extractedValue" in storedValue
+) {
+  return String(storedValue.extractedValue);
+}
+
+return String(storedValue);
+}
+
+
+async function sendCoachMessage() {
+  const message = coachInput.trim();
+
+  if (!message || coachLoading) return;
+
+  const userMessage: CoachMessage = {
+    id: crypto.randomUUID(),
+    role: "user",
+    text: message,
+    timestamp: new Date().toISOString(),
+  };
+
+  setCoachMessages((current) => [...current, userMessage]);
+  setCoachInput("");
+  setCoachLoading(true);
+  setCoachError("");
+
+  try {
+    const interpretation = await interpretUserMessage(
+      message,
+      prototypeInterpretationProvider
+    );
+
+    setPersonalContext((currentContext) =>
+      integrateInterpretation(currentContext, interpretation)
+    );
+
+    const responseText =
+      interpretation.extractedInformation.length > 0
+        ? `I've understood what you've shared. ${interpretation.summary} I'll use this information to make your health guidance more relevant.`
+        : `${interpretation.summary} ${interpretation.unresolvedQuestions[0] ?? "Could you tell me a little more?"}`;
+
+    const coachMessage: CoachMessage = {
+      id: crypto.randomUUID(),
+      role: "coach",
+      text: responseText,
+      timestamp: new Date().toISOString(),
+    };
+
+    setCoachMessages((current) => [...current, coachMessage]);
+  } catch (error) {
+    console.error("Koach message processing failed:", error);
+    setCoachError(
+      "I couldn't process that message. Please try again."
+    );
+  } finally {
+    setCoachLoading(false);
   }
+}
+
 
   const primaryGoal = getProfileValue(
     "primary_goal",
@@ -182,9 +366,17 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
 
   const sleepHours = getProfileValue("sleep_hours", "—");
 
-  const morningPattern = personalContext.facts.find(
-    (fact) => fact.key === "morning_activity_pattern"
-  );
+  const morningPattern = personalContext.facts.find((fact) => {
+  if (fact.key !== "morning_activity_pattern") return false;
+
+  if (fact.source === "simulated") {
+    return observationMode === "demo";
+  }
+
+  if (fact.source === "derived") return false;
+
+  return true;
+});
 
   function confirmMorningPattern() {
     if (!morningPattern) return;
@@ -211,9 +403,10 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
 
     if (existingGoal) {
       updatedContext = updateFact(updatedContext, existingGoal.id, {
-        value: trimmedGoal,
-        status: "confirmed",
-      });
+  value: trimmedGoal,
+  status: "confirmed",
+  source: "user_input",
+});
     } else {
       updatedContext = addFact(updatedContext, {
         category: "goals",
@@ -231,9 +424,10 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
 
     if (existingActivity) {
       updatedContext = updateFact(updatedContext, existingActivity.id, {
-        value: trimmedActivity,
-        status: "confirmed",
-      });
+  value: trimmedActivity,
+  status: "confirmed",
+  source: "user_input",
+});
     } else {
       updatedContext = addFact(updatedContext, {
         category: "preferences",
@@ -272,10 +466,11 @@ function completeOnboarding() {
     );
 
     if (goalFact) {
-      updatedContext = updateFact(updatedContext, goalFact.id, {
-        value: trimmedGoal,
-        status: "confirmed",
-      });
+    updatedContext = updateFact(updatedContext, goalFact.id, {
+    value: trimmedGoal,
+    status: "confirmed",
+    source: "user_input",
+    });
     } else {
       updatedContext = addFact(updatedContext, {
         category: "goals",
@@ -293,9 +488,10 @@ function completeOnboarding() {
 
     if (activityFact) {
       updatedContext = updateFact(updatedContext, activityFact.id, {
-        value: trimmedActivity,
-        status: "confirmed",
-      });
+  value: trimmedActivity,
+  status: "confirmed",
+  source: "user_input",
+});
     } else {
       updatedContext = addFact(updatedContext, {
         category: "preferences",
@@ -313,9 +509,10 @@ function completeOnboarding() {
 
     if (sleepGoalFact) {
       updatedContext = updateFact(updatedContext, sleepGoalFact.id, {
-        value: sleepGoal,
-        status: "confirmed",
-      });
+  value: sleepGoal,
+  status: "confirmed",
+  source: "user_input",
+});
     } else {
       updatedContext = addFact(updatedContext, {
         category: "goals",
@@ -359,9 +556,10 @@ function savePersonalisationStep1() {
 
       if (existingFact) {
         updatedContext = updateFact(updatedContext, existingFact.id, {
-          value: answer.value,
-          status: "confirmed",
-        });
+  value: answer.value,
+  status: "confirmed",
+  source: "user_input",
+});
       } else {
         updatedContext = addFact(updatedContext, {
           category: "behaviour",
@@ -403,11 +601,12 @@ function savePersonalisationStep2() {
       );
 
       if (existingFact) {
-        updatedContext = updateFact(updatedContext, existingFact.id, {
-          value: answer.value,
-          status: "confirmed",
-        });
-      } else {
+  updatedContext = updateFact(updatedContext, existingFact.id, {
+    value: answer.value,
+    status: "confirmed",
+    source: "user_input",
+  });
+} else {
         updatedContext = addFact(updatedContext, {
           category: "routines",
           key: answer.key,
@@ -447,12 +646,13 @@ function savePersonalisationStep3() {
         (fact) => fact.key === answer.key
       );
 
-      if (existingFact) {
-        updatedContext = updateFact(updatedContext, existingFact.id, {
-          value: answer.value,
-          status: "confirmed",
-        });
-      } else {
+     if (existingFact) {
+  updatedContext = updateFact(updatedContext, existingFact.id, {
+    value: answer.value,
+    status: "confirmed",
+    source: "user_input",
+  });
+} else {
         updatedContext = addFact(updatedContext, {
           category: "preferences",
           key: answer.key,
@@ -683,6 +883,90 @@ function savePersonalisationStep3() {
                 finding what works for you, consistently.
               </p>
                        </section>
+
+<section className="coach-chat-card">
+  <div className="card-heading">
+    <span>YOUR PERSONAL KOACH</span>
+    <span className="metric-note">PERSONALISED GUIDANCE</span>
+  </div>
+
+  <h2>Let's get to know you better.</h2>
+
+  <p className="coach-chat-description">
+    Tell me about your sleep, activity, routines or what makes
+    healthy habits difficult. I'll use what you share to understand
+    your needs better.
+  </p>
+
+  <div className="coach-message-list" aria-live="polite">
+    {coachMessages.length === 0 && (
+      <div className="coach-message coach-message-assistant">
+        <strong>Koach</strong>
+        <p>
+          I'm here to help you build healthier routines that fit
+          your life. What would you like me to understand about you?
+        </p>
+      </div>
+    )}
+
+    {coachMessages.map((message) => (
+      <div
+        key={message.id}
+        className={`coach-message ${
+          message.role === "user"
+            ? "coach-message-user"
+            : "coach-message-assistant"
+        }`}
+      >
+        <strong>
+          {message.role === "user" ? "You" : "Koach"}
+        </strong>
+        <p>{message.text}</p>
+      </div>
+    ))}
+
+    {coachLoading && (
+      <div className="coach-message coach-message-assistant">
+        <strong>Koach</strong>
+        <p>Thinking about what you've shared...</p>
+      </div>
+    )}
+  </div>
+
+  <form
+    className="coach-input-area"
+    onSubmit={(event) => {
+      event.preventDefault();
+      void sendCoachMessage();
+    }}
+  >
+    <input
+      type="text"
+      value={coachInput}
+      onChange={(event) => setCoachInput(event.target.value)}
+      placeholder="Tell me about your daily routine..."
+      aria-label="Message Koach"
+      disabled={coachLoading}
+    />
+
+    <button
+      type="submit"
+      className="primary-button"
+      disabled={!coachInput.trim() || coachLoading}
+    >
+      Send
+    </button>
+  </form>
+
+  {coachError && (
+    <p className="coach-error">{coachError}</p>
+  )}
+
+  <p className="profile-completion-note">
+    Your messages are stored locally in this prototype.
+    You remain in control of the information you share.
+  </p>
+</section>
 
 <section className="profile-completion-card">
   <div className="card-heading">
@@ -981,7 +1265,9 @@ function savePersonalisationStep3() {
                 </h2>
 
                 <p>Movement today</p>
-                <span className="metric-note">DEMO DATA</span>
+                <span className="metric-note">
+  {observationMode === "demo" ? "SIMULATED DATA" : "USER PROFILE DATA"}
+</span>
               </article>
 
               <article className="overview-card">
@@ -1013,28 +1299,63 @@ function savePersonalisationStep3() {
                 <div className="recommendation-marker">K</div>
 
                 <div className="recommendation-content">
-                  <h3>Consider moving your walk to the evening.</h3>
+                  <h3>
+  {currentRecommendation?.title ??
+    "Let's learn a little more about your routine."}
+</h3>
 
-                  <p>
-                    Your demonstration activity pattern suggests that
-                    mornings may be harder to accommodate. An evening walk
-                    could offer a more practical alternative.
-                  </p>
+                 <p>
+  {currentRecommendation?.action ??
+    recommendationResult.reasons[0]}
+</p>
 
-                  <div className="reason-box">
-                    <strong>Why this suggestion?</strong>
-                    <span>
-                      Koach has an observed morning routine pattern in the
-                      demonstration profile. It is an observation, not a
-                      confirmed fact about your routine.
-                    </span>
-                  </div>
+<button
+  className="text-button"
+  onClick={() =>
+    setShowRecommendationReason((previous) => !previous)
+  }
+  aria-expanded={showRecommendationReason}
+>
+  {showRecommendationReason ? "See less" : "See more"}
+</button>
+
+{showRecommendationReason && (
+  <div className="reason-box">
+  <strong>Why this suggestion?</strong>
+  <span>
+    {currentRecommendation?.explanation ??
+      "Koach needs more personal information before making a recommendation."}
+  </span>
+</div>
+)}
 
                   {recommendationStatus === "pending" ? (
                     <div className="recommendation-actions">
                       <button
                         className="primary-button"
-                        onClick={() => setRecommendationStatus("accepted")}
+                        onClick={() => {
+  if (!currentRecommendation) return;
+
+  const newActivity: ScheduledActivity = {
+    id: currentRecommendation.id,
+    title: currentRecommendation.title,
+    durationMinutes:
+      currentRecommendation.durationMinutes ?? 0,
+    timing: currentRecommendation.timing,
+    location: "Location to be confirmed",
+    status: "scheduled",
+  };
+
+  setScheduledActivities((previous) => [
+    ...previous.filter(
+      (activity) => activity.id !== newActivity.id
+    ),
+    newActivity,
+  ]);
+
+  setRecommendationStatus("accepted");
+}}
+disabled={!currentRecommendation}
                       >
                         Accept suggestion
                       </button>
@@ -1077,6 +1398,36 @@ function savePersonalisationStep3() {
                 </div>
               </article>
             </section>
+
+            {scheduledActivities.length > 0 && (
+  <section className="plan-section">
+    <div className="section-heading">
+      <div>
+        <p className="eyebrow">YOUR SCHEDULE</p>
+        <h2>Activities you've accepted</h2>
+      </div>
+    </div>
+
+    <div className="routine-list">
+      {scheduledActivities.map((activity) => (
+        <div className="routine-item" key={activity.id}>
+          <span className="routine-time">
+            {activity.timing.toUpperCase()}
+          </span>
+
+          <div className="routine-indicator green" />
+
+          <div className="routine-description">
+            <strong>{activity.title}</strong>
+            <p>
+              {activity.durationMinutes} minutes · {activity.location}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </section>
+)}
 
             <section className="plan-section">
               <div className="section-heading">

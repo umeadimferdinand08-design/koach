@@ -93,6 +93,52 @@ describe("Investigation Engine", () => {
 
     expect(dismissed.status).toBe("dismissed");
   });
+
+   it("rejects answers to dismissed investigations", () => {
+    const investigation = createInvestigation(mockPattern);
+    const dismissed = dismissInvestigation(investigation);
+    const question = dismissed.questions[0];
+
+    expect(() =>
+      submitInvestigationAnswer(dismissed, {
+        questionId: question.id,
+        value: "schedule",
+        answeredAt: new Date().toISOString(),
+      })
+    ).toThrow(
+      "Cannot submit answers to a dismissed investigation."
+    );
+  });
+
+  it("rejects duplicate options in multiple-choice answers", () => {
+  const baseInvestigation = createInvestigation(mockPattern);
+
+  const investigation = {
+    ...baseInvestigation,
+    questions: [
+      {
+        id: "multi-question-001",
+        patternId: mockPattern.id,
+        text: "Which factors affect your activity?",
+        type: "multiple_choice" as const,
+        options: [
+          { id: "schedule", label: "Busy schedule" },
+          { id: "energy", label: "Low energy" },
+        ],
+        required: true,
+        purpose: "Identify activity barriers",
+      },
+    ],
+  };
+
+  expect(() =>
+    submitInvestigationAnswer(investigation, {
+      questionId: "multi-question-001",
+      value: ["schedule", "schedule"],
+      answeredAt: new Date().toISOString(),
+    })
+  ).toThrow("Answer must contain valid available options.");
+});
 });
 
 

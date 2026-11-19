@@ -156,10 +156,25 @@ export function integrateInterpretation(
       interpretation.originalMessage
     );
 
-    const shouldRemainConfirmed =
-      existingFact.status === "confirmed" &&
-      information.interpretationType === "inferred";
+    const previousStoredValue =
+  existingFact.value as Partial<StoredFactValue>;
 
+const previousExtractedValue =
+  previousStoredValue &&
+  typeof previousStoredValue === "object" &&
+  "extractedValue" in previousStoredValue
+    ? previousStoredValue.extractedValue
+    : existingFact.value;
+
+const sameValue = Object.is(
+  previousExtractedValue,
+  information.value
+);
+
+const shouldRemainConfirmed =
+  existingFact.status === "confirmed" &&
+  information.interpretationType === "inferred" &&
+  sameValue;
     const shouldConfirm =
       information.interpretationType === "explicit" &&
       information.status === "confirmed";

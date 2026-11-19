@@ -76,8 +76,11 @@ export function updateFact(
   context: PersonalContext,
   factId: string,
   updates: Partial<
-    Pick<PersonalFact, "key" | "value" | "status" | "confidence">
+  Pick<
+    PersonalFact,
+    "key" | "value" | "status" | "confidence" | "source"
   >
+>
 ): PersonalContext {
   const now = getTimestamp();
 

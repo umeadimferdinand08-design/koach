@@ -128,6 +128,31 @@ describe("Koach Personal Context Engine", () => {
     expect(context.facts[0].lastConfirmedAt).toBeDefined();
   });
 
+  it("updates the source when explicitly provided", () => {
+  let context = createPersonalContext();
+
+  context = addFact(context, {
+    category: "goals",
+    key: "primary_goal",
+    value: "Build exercise habits",
+    status: "confirmed",
+    source: "simulated",
+    permissionRequired: false,
+  });
+
+  const factId = context.facts[0].id;
+
+  context = updateFact(context, factId, {
+    value: "Improve cardiovascular fitness",
+    source: "user_input",
+  });
+
+  expect(context.facts[0].value).toBe(
+    "Improve cardiovascular fitness"
+  );
+  expect(context.facts[0].source).toBe("user_input");
+});
+
   it("confirms an observation", () => {
     let context = createPersonalContext();
 

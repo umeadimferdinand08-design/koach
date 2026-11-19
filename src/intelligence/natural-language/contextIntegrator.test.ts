@@ -201,4 +201,36 @@ describe("Natural Language Context Integrator", () => {
       confirmedContext.facts[0].id
     );
   });
+
+  it("marks a changed inferred value as uncertain", () => {
+  const context = createPersonalContext();
+
+  const explicit = createInterpretation("explicit");
+  explicit.originalMessage = "I usually exercise in the morning.";
+  explicit.extractedInformation[0].key = "usual_exercise_time";
+  explicit.extractedInformation[0].value = "morning";
+  explicit.extractedInformation[0].supportingText =
+    "I usually exercise in the morning.";
+
+  const confirmedContext = integrateInterpretation(context, explicit);
+
+  const inferred = createInterpretation("inferred");
+  inferred.originalMessage =
+    "Lately, evenings seem to be when I can exercise.";
+  inferred.extractedInformation[0].key = "usual_exercise_time";
+  inferred.extractedInformation[0].value = "evening";
+  inferred.extractedInformation[0].supportingText =
+    "Lately, evenings seem to be when I can exercise.";
+
+  const updatedContext = integrateInterpretation(
+    confirmedContext,
+    inferred
+  );
+
+  expect(updatedContext.facts).toHaveLength(1);
+  expect(updatedContext.facts[0].status).toBe("uncertain");
+  expect(updatedContext.facts[0].id).toBe(
+    confirmedContext.facts[0].id
+  );
+});
 });

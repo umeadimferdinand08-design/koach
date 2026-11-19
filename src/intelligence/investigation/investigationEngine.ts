@@ -55,14 +55,15 @@ function validateInvestigationAnswer(
   }
 
   if (question.type === "multiple_choice") {
-    const validOptions =
-      Array.isArray(answer.value) &&
-      answer.value.length > 0 &&
-      answer.value.every(
-        (value) =>
-          typeof value === "string" &&
-          question.options?.some((option) => option.id === value)
-      );
+   const validOptions =
+  Array.isArray(answer.value) &&
+  answer.value.length > 0 &&
+  new Set(answer.value).size === answer.value.length &&
+  answer.value.every(
+    (value) =>
+      typeof value === "string" &&
+      question.options?.some((option) => option.id === value)
+  );
 
     if (!validOptions) {
       throw new Error("Answer must contain valid available options.");
@@ -89,6 +90,11 @@ export function submitInvestigationAnswer(
   investigation: Investigation,
   answer: InvestigationAnswer
 ): Investigation {
+  if (investigation.status === "dismissed") {
+  throw new Error(
+    "Cannot submit answers to a dismissed investigation."
+  );
+}
   const question = investigation.questions.find(
     (item) => item.id === answer.questionId
   );
