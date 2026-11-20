@@ -19,10 +19,7 @@ import {
   generateRecommendation,
 } from "./intelligence/recommendation-engine/recommendationEngine";
 import {
-  createPersonalContext,
-  addFact,
-  confirmFact,
-  updateFact,
+  createPersonalContext, addFact, updateFact,
 } from "./intelligence/personal-profile/personalContext";
 
 import type { PersonalContext } from "./intelligence/personal-profile/types";
@@ -111,8 +108,10 @@ function createDemoProfile(): PersonalContext {
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("Home");
-    const [observationMode, setObservationMode] =
+  const [observationMode, setObservationMode] =
     useState<ObservationMode>("demo");
+  const [insightPeriod, setInsightPeriod] =
+    useState<"7" | "3">("7");
 
   const demoObservations = useMemo(
     () => generateDemoObservations(),
@@ -180,6 +179,86 @@ const [profileSaveMessage, setProfileSaveMessage] = useState("");
     () => [...candidatePatterns, ...historicalPatterns],
     [candidatePatterns, historicalPatterns]
   );
+
+  const insightDays = useMemo(() => {
+  if (observationMode !== "demo") return [];
+
+  const days = new Map<
+    string,
+    { steps?: number; bedtime?: string; wakeTime?: string }
+  >();
+
+  for (const observation of demoObservations) {
+    const date = observation.observedAt.slice(0, 10);
+
+    if (!days.has(date)) {
+      days.set(date, {});
+    }
+
+    const day = days.get(date)!;
+
+    if (
+      observation.metric === "steps" &&
+      typeof observation.value === "number"
+    ) {
+      day.steps = observation.value;
+    }
+
+    if (
+      observation.metric === "bedtime" &&
+      typeof observation.value === "string"
+    ) {
+      day.bedtime = observation.value;
+    }
+
+    if (
+      observation.metric === "wake_time" &&
+      typeof observation.value === "string"
+    ) {
+      day.wakeTime = observation.value;
+    }
+  }
+
+  return Array.from(days.entries())
+    .map(([date, day]) => {
+      let sleepHours: number | null = null;
+
+      if (day.bedtime && day.wakeTime) {
+        const [bedHour, bedMinute] = day.bedtime.split(":").map(Number);
+        const [wakeHour, wakeMinute] = day.wakeTime.split(":").map(Number);
+
+        const bedtimeMinutes = bedHour * 60 + bedMinute;
+        let wakeMinutes = wakeHour * 60 + wakeMinute;
+
+        if (wakeMinutes <= bedtimeMinutes) {
+          wakeMinutes += 24 * 60;
+        }
+
+        sleepHours = Number(
+          ((wakeMinutes - bedtimeMinutes) / 60).toFixed(1)
+        );
+      }
+
+      return {
+        date,
+        label: new Date(`${date}T12:00:00`).toLocaleDateString("en", {
+          weekday: "short",
+        }),
+        steps: day.steps ?? 0,
+        sleepHours,
+      };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+}, [demoObservations, observationMode]);
+
+const visibleInsightDays = insightDays.slice(
+  insightPeriod === "7" ? -7 : -3
+);
+
+const maxSteps = Math.max(
+  ...visibleInsightDays.map((day) => day.steps),
+  1
+);
 
   const recommendationResult = useMemo(
     () =>
@@ -324,11 +403,7 @@ async function sendCoachMessage() {
       integrateInterpretation(currentContext, interpretation)
     );
 
-    const responseText =
-      interpretation.extractedInformation.length > 0
-        ? `I've understood what you've shared. ${interpretation.summary} I'll use this information to make your health guidance more relevant.`
-        : `${interpretation.summary} ${interpretation.unresolvedQuestions[0] ?? "Could you tell me a little more?"}`;
-
+    const responseText = interpretation.summary;
     const coachMessage: CoachMessage = {
       id: crypto.randomUUID(),
       role: "coach",
@@ -362,29 +437,19 @@ async function sendCoachMessage() {
   setActivityDraft(preferredActivity);
 }, [primaryGoal, preferredActivity]);
 
-  const activityMinutes = getProfileValue("activity_minutes", "—");
+  const activityMinutes = getProfileValue(
+  "activity_minutes",
+  "Not connected yet"
+);
 
-  const sleepHours = getProfileValue("sleep_hours", "—");
+const sleepHours = getProfileValue(
+  "sleep_hours",
+  "Not connected yet"
+);
 
-  const morningPattern = personalContext.facts.find((fact) => {
-  if (fact.key !== "morning_activity_pattern") return false;
+  
 
-  if (fact.source === "simulated") {
-    return observationMode === "demo";
-  }
-
-  if (fact.source === "derived") return false;
-
-  return true;
-});
-
-  function confirmMorningPattern() {
-    if (!morningPattern) return;
-
-    setPersonalContext((current) =>
-      confirmFact(current, morningPattern.id)
-    );
-  }
+  
   function saveProfileChanges() {
   const trimmedGoal = goalDraft.trim();
   const trimmedActivity = activityDraft.trim();
@@ -873,10 +938,14 @@ function savePersonalisationStep3() {
               <p className="eyebrow">YOUR HEALTH, UNDERSTOOD.</p>
 
               <h1>
-                Good morning.
-                <br />
-                <span>Let's make today count.</span>
-              </h1>
+  {new Date().getHours() < 12
+    ? "Good morning."
+    : new Date().getHours() < 17
+    ? "Good afternoon."
+    : "Good evening."}
+  <br />
+  <span>Let's make today count.</span>
+</h1>
 
               <p className="welcome-description">
                 Your health journey isn't about being perfect. It's about
@@ -1533,88 +1602,179 @@ disabled={!currentRecommendation}
 )}
 
         {activeTab === "Insights" && (
-          <section className="placeholder-section">
-            <p className="eyebrow">PATTERNS AND OBSERVATIONS</p>
-            <h1>Insights</h1>
+  <section className="insights-page">
+    <p className="eyebrow">YOUR PROGRESS AND PATTERNS</p>
+    <h1>Insights</h1>
 
-            <p>
-              Koach has the following demonstration observation:
-            </p>
+    <p className="insights-intro">
+      A clearer picture of your activity, sleep and emerging routines.
+    </p>
 
-            {morningPattern && (
-              <article className="reason-box">
-                <strong>{String(morningPattern.value)}</strong>
+    <div className="insights-mode-label">
+      {observationMode === "demo"
+        ? "Demo Mode · Simulated observations"
+        : "Live Mode · Connected observations only"}
+    </div>
 
-                <span>
-                  Status: {morningPattern.status}
-                  {" · "}
-                  Confidence: {Math.round(
-                    (morningPattern.confidence ?? 0) * 100
-                  )}%
-                </span>
-
-                {morningPattern.status !== "confirmed" ? (
-                  <button
-                    className="primary-button"
-                    onClick={confirmMorningPattern}
-                  >
-                    Confirm this observation
-                  </button>
-                ) : (
-                  <strong>You've confirmed this observation.</strong>
-                )}
-              </article>
-            )}
-
-           
-<section className="reason-box">
-  <strong>Historical Pattern Findings</strong>
-
-  <p>
-    Data mode: {observationMode === "demo" ? "Demo Mode — simulated data" : "Live Mode"}
-  </p>
-
-  {historicalPatterns.length > 0 ? (
-    historicalPatterns.map((pattern) => (
-      <article key={pattern.id}>
-        <h3>{pattern.title}</h3>
-
-        <p>{pattern.description}</p>
-
+    {observationMode === "live" ? (
+      <article className="insight-empty-state">
+        <h2>Your insights will appear here</h2>
         <p>
-          Status: {pattern.status}
-          {" · "}
-          Confidence: {pattern.confidence}
-        </p>
-
-        <p>{pattern.explanation}</p>
-
-        <p>
-          Supporting observations: {pattern.evidenceObservationIds?.length ?? 0}
+          Koach needs permission-approved activity and sleep observations
+          before it can display your personal trends. Demo observations
+          are not used in Live Mode.
         </p>
       </article>
-    ))
-  ) : (
-    <p>
-      No historical patterns are available in this data mode yet.
+    ) : (
+      <>
+        <section className="insight-panel">
+          <div className="insight-panel-header">
+            <div>
+              <p className="eyebrow">MOVEMENT</p>
+              <h2>Daily activity</h2>
+            </div>
+
+            <div className="insight-period-control">
+              <button
+                className={insightPeriod === "7" ? "selected" : ""}
+                onClick={() => setInsightPeriod("7")}
+              >
+                7 days
+              </button>
+
+              <button
+                className={insightPeriod === "3" ? "selected" : ""}
+                onClick={() => setInsightPeriod("3")}
+              >
+                3 days
+              </button>
+            </div>
+          </div>
+
+          <div className="insight-chart">
+            {visibleInsightDays.map((day) => (
+              <div className="insight-chart-column" key={day.date}>
+                <strong>
+                  {day.steps.toLocaleString()}
+                </strong>
+
+                <div className="insight-bar-track">
+                  <div
+                    className="insight-bar activity-bar"
+                    style={{
+                      height: `${(day.steps / maxSteps) * 100}%`,
+                    }}
+                  />
+                </div>
+
+                <span>{day.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="insight-footnote">
+            Daily step counts · Simulated demonstration data
+          </p>
+        </section>
+
+        <section className="insight-panel">
+          <div>
+            <p className="eyebrow">REST AND RECOVERY</p>
+            <h2>Sleep duration</h2>
+          </div>
+
+          <div className="insight-sleep-list">
+            {visibleInsightDays.map((day) => (
+              <div className="insight-sleep-row" key={day.date}>
+                <span>{day.label}</span>
+
+                <div className="insight-sleep-track">
+                  <div
+                    className="insight-sleep-fill"
+                    style={{
+                      width: `${
+                        Math.min((day.sleepHours ?? 0) / 10, 1) * 100
+                      }%`,
+                    }}
+                  />
+                </div>
+
+                <strong>
+                  {day.sleepHours === null
+                    ? "—"
+                    : `${day.sleepHours} hrs`}
+                </strong>
+              </div>
+            ))}
+          </div>
+
+          <p className="insight-footnote">
+            Estimated time between recorded bedtime and wake time.
+            Simulated demonstration data.
+          </p>
+        </section>
+      </>
+    )}
+
+    <section className="insight-panel">
+      <p className="eyebrow">BEHAVIOUR INTELLIGENCE</p>
+      <h2>Detected patterns</h2>
+
+      <p className="insights-intro">
+        These are potential patterns identified by Koach. They are
+        not automatically treated as confirmed explanations.
+      </p>
+
+      {allPatterns.length > 0 ? (
+        <div className="insight-pattern-list">
+          {allPatterns.map((pattern) => (
+            <details className="insight-pattern-card" key={pattern.id}>
+              <summary>
+                <span>
+                  <strong>{pattern.title}</strong>
+                  <small>
+                    {pattern.status}
+                    {" · "}
+                    Confidence: {pattern.confidence}
+                  </small>
+                </span>
+
+                <span className="insight-expand-icon">+</span>
+              </summary>
+
+              <div className="insight-pattern-details">
+                <p>{pattern.description}</p>
+                <p>{pattern.explanation}</p>
+
+                <small>
+                  Supporting observations:{" "}
+                  {pattern.evidenceObservationIds?.length ?? 0}
+                </small>
+              </div>
+            </details>
+          ))}
+        </div>
+      ) : (
+        <p>
+          No patterns have been identified in this data mode yet.
+        </p>
+      )}
+    </section>
+
+    <p className="insight-disclaimer">
+      Demo Mode uses simulated data to demonstrate Koach's intelligence
+      features. These figures do not represent your actual behaviour.
     </p>
-  )}
-</section>
 
-<p>
-  Historical findings are candidates for investigation, not confirmed
-  explanations of behaviour.
-</p>
-
-
-            <button
-              className="primary-button"
-              onClick={() => setActiveTab("Home")}
-            >
-              Return to Home
-            </button>
-          </section>
-        )}
+    <button
+      className="primary-button"
+      onClick={() => setActiveTab("Home")}
+    >
+      Return to Home
+    </button>
+  </section>
+)}
+           
 
         {activeTab === "Data & Privacy" && (
           <section className="placeholder-section">
